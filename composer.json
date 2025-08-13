@@ -1,0 +1,44 @@
+{
+    "name": "hardsystem/total-express-api",
+    "description": "Biblioteca PHP para integração com a API SOAP da Total Express",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Hardsystem",
+            "email": "contato@hardsystem.com.br"
+        }
+    ],
+    "require": {
+        "php": ">=7.4",
+        "ext-soap": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Hardsystem\\TotalExpressAPI\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Hardsystem\\TotalExpressAPI\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "keywords": [
+        "total-express",
+        "frete",
+        "shipping",
+        "soap",
+        "api",
+        "php"
+    ],
+    "homepage": "https://github.com/hardsystem/total-express-api",
+    "support": {
+        "issues": "https://github.com/hardsystem/total-express-api/issues",
+        "source": "https://github.com/hardsystem/total-express-api"
+    }
+}
