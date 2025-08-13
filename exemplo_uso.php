@@ -5,8 +5,8 @@ require_once 'vendor/autoload.php';
 use Hardsystem\TotalExpressAPI\TotalExpressAPI;
 
 // Configurações da API
-$user = 'distridomquixo-prod';
-$pass = 'OLK31qY14K';
+$user = '';
+$pass = '';
 
 try {
     // Inicializa a API

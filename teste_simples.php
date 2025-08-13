@@ -5,8 +5,8 @@ require_once 'vendor/autoload.php';
 use Hardsystem\TotalExpressAPI\TotalExpressAPI;
 
 // Teste simples da API
-$user = 'distridomquixo-prod';
-$pass = 'OLK31qY14K';
+$user = '';
+$pass = '';
 
 try {
     $totalAPI = new TotalExpressAPI($user, $pass, 'production', true);
