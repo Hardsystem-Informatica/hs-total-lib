@@ -5,7 +5,7 @@ namespace Hardsystem\TotalExpressAPI;
 /**
  * Classe para integração com a API SOAP da Total Express
  * 
- * Esta classe fornece métodos para calcular fretes e interagir com os serviços
+ * Esta classe fornece métodos para calcular fretes e rastrear encomendas
  * da Total Express através de sua API SOAP.
  */
 class TotalExpressAPI
@@ -13,8 +13,10 @@ class TotalExpressAPI
     private $user;
     private $pass;
     private $location;
+    private $locationRastreamento;
     private $options;
     private $client;
+    private $clientRastreamento;
     private $debug = false;
 
     /**
@@ -33,6 +35,15 @@ class TotalExpressAPI
     const TIPO_ENTREGA_RMA = 2;      // RMA
 
     /**
+     * Status de rastreamento
+     */
+    const STATUS_PENDENTE = 'PENDENTE';
+    const STATUS_EM_TRANSITO = 'EM_TRANSITO';
+    const STATUS_ENTREGUE = 'ENTREGUE';
+    const STATUS_DEVOLVIDO = 'DEVOLVIDO';
+    const STATUS_EXTRAVIADO = 'EXTRAVIADO';
+
+    /**
      * Construtor da classe
      * 
      * @param string $user Usuário da API
@@ -46,18 +57,21 @@ class TotalExpressAPI
         $this->pass = $pass;
         $this->debug = $debug;
         
-        // Define o endpoint baseado no ambiente
+        // Define os endpoints baseado no ambiente
         if ($environment === 'sandbox') {
             $this->location = 'https://edi.totalexpress.com.br/webservice_calculo_frete_v2_sandbox.php';
+            $this->locationRastreamento = 'https://edi.totalexpress.com.br/webservice_rastreamento_sandbox.php';
         } else {
             $this->location = 'https://edi.totalexpress.com.br/webservice_calculo_frete_v2.php';
+            $this->locationRastreamento = 'https://edi.totalexpress.com.br/webservice_rastreamento.php';
         }
 
         $this->initializeSoapClient();
+        $this->initializeRastreamentoClient();
     }
 
     /**
-     * Inicializa o cliente SOAP
+     * Inicializa o cliente SOAP para cálculo de frete
      */
     private function initializeSoapClient()
     {
@@ -79,6 +93,32 @@ class TotalExpressAPI
         } catch (\SoapFault $e) {
             $this->log('Erro ao inicializar cliente SOAP da Total Express: ' . $e->getMessage(), 'ERROR');
             throw $e;
+        }
+    }
+
+    /**
+     * Inicializa o cliente SOAP para rastreamento
+     */
+    private function initializeRastreamentoClient()
+    {
+        $optionsRastreamento = [
+            'location'        => $this->locationRastreamento,
+            'uri'             => 'urn:rastreamento',
+            'login'           => $this->user,
+            'password'        => $this->pass,
+            'authentication'  => SOAP_AUTHENTICATION_BASIC,
+            'trace'           => true,
+            'exceptions'      => true,
+            'connection_timeout' => 30,
+            'features'        => SOAP_SINGLE_ELEMENT_ARRAYS,
+        ];
+
+        try {
+            $this->clientRastreamento = new \SoapClient(null, $optionsRastreamento);
+            $this->log('Cliente SOAP de rastreamento da Total Express inicializado com sucesso');
+        } catch (\SoapFault $e) {
+            $this->log('Erro ao inicializar cliente SOAP de rastreamento: ' . $e->getMessage(), 'ERROR');
+            // Não lança exceção aqui pois o rastreamento é opcional
         }
     }
 
@@ -148,6 +188,207 @@ class TotalExpressAPI
 
             throw new \Exception('Erro ao calcular frete: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Rastreia uma encomenda pelo código de rastreamento
+     * 
+     * @param string $codigoRastreamento Código de rastreamento da encomenda
+     * @return array Dados do rastreamento
+     * @throws \Exception
+     */
+    public function rastrearEncomenda($codigoRastreamento)
+    {
+        if (!$this->clientRastreamento) {
+            throw new \Exception('Cliente de rastreamento não disponível');
+        }
+
+        try {
+            // Valida o código de rastreamento
+            $this->validarCodigoRastreamento($codigoRastreamento);
+
+            $this->log('Rastreando encomenda', [
+                'codigo' => $codigoRastreamento
+            ]);
+
+            // Prepara os parâmetros para a API
+            $soapParams = [
+                'rastreamentoRequest' => [
+                    'CodigoRastreamento' => $codigoRastreamento
+                ]
+            ];
+
+            // Faz a chamada SOAP
+            $response = $this->clientRastreamento->__soapCall('rastreamento', $soapParams);
+
+            // Processa a resposta
+            $resultado = $this->processarRespostaRastreamento($response);
+
+            $this->log('Rastreamento realizado com sucesso', [
+                'codigo' => $codigoRastreamento,
+                'status' => $resultado['status']
+            ]);
+
+            return $resultado;
+
+        } catch (\SoapFault $e) {
+            $this->log('Erro ao rastrear encomenda', [
+                'erro' => $e->getMessage(),
+                'codigo' => $codigoRastreamento,
+                'request' => isset($this->clientRastreamento) ? $this->clientRastreamento->__getLastRequest() : null,
+                'response' => isset($this->clientRastreamento) ? $this->clientRastreamento->__getLastResponse() : null
+            ], 'ERROR');
+
+            throw new \Exception('Erro ao rastrear encomenda: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Rastreia múltiplas encomendas de uma vez
+     * 
+     * @param array $codigosRastreamento Array com códigos de rastreamento
+     * @return array Array com resultados do rastreamento
+     */
+    public function rastrearMultiplasEncomendas($codigosRastreamento)
+    {
+        if (!is_array($codigosRastreamento) || empty($codigosRastreamento)) {
+            throw new \InvalidArgumentException('Array de códigos de rastreamento inválido');
+        }
+
+        $resultados = [];
+        
+        foreach ($codigosRastreamento as $codigo) {
+            try {
+                $resultados[] = [
+                    'codigo' => $codigo,
+                    'sucesso' => true,
+                    'dados' => $this->rastrearEncomenda($codigo)
+                ];
+            } catch (\Exception $e) {
+                $resultados[] = [
+                    'codigo' => $codigo,
+                    'sucesso' => false,
+                    'erro' => $e->getMessage()
+                ];
+            }
+        }
+
+        return $resultados;
+    }
+
+    /**
+     * Valida o código de rastreamento
+     * 
+     * @param string $codigo
+     * @throws \InvalidArgumentException
+     */
+    private function validarCodigoRastreamento($codigo)
+    {
+        if (empty($codigo)) {
+            throw new \InvalidArgumentException('Código de rastreamento não informado');
+        }
+
+        // Remove espaços e caracteres especiais
+        $codigo = preg_replace('/[^A-Z0-9]/', '', strtoupper($codigo));
+        
+        if (strlen($codigo) < 8) {
+            throw new \InvalidArgumentException('Código de rastreamento inválido');
+        }
+    }
+
+    /**
+     * Processa a resposta da API de rastreamento
+     * 
+     * @param object $response
+     * @return array
+     */
+    private function processarRespostaRastreamento($response)
+    {
+        // Tenta diferentes estruturas de resposta
+        $dados = $response->rastreamentoResponse->DadosRastreamento ?? 
+                 $response->DadosRastreamento ?? 
+                 $response ?? null;
+
+        if (!$dados) {
+            throw new \Exception('Resposta da API de rastreamento não contém dados válidos');
+        }
+
+        // Processa os eventos de rastreamento
+        $eventos = [];
+        if (isset($dados->Eventos) && is_array($dados->Eventos)) {
+            foreach ($dados->Eventos as $evento) {
+                $eventos[] = [
+                    'data' => $evento->Data ?? null,
+                    'hora' => $evento->Hora ?? null,
+                    'local' => $evento->Local ?? null,
+                    'status' => $evento->Status ?? null,
+                    'observacao' => $evento->Observacao ?? null
+                ];
+            }
+        }
+
+        // Determina o status atual
+        $statusAtual = $this->determinarStatusAtual($eventos);
+
+        return [
+            'sucesso' => true,
+            'codigo_rastreamento' => $dados->CodigoRastreamento ?? null,
+            'status' => $statusAtual,
+            'status_texto' => $this->getStatusTexto($statusAtual),
+            'data_entrega' => $dados->DataEntrega ?? null,
+            'destinatario' => $dados->Destinatario ?? null,
+            'eventos' => $eventos,
+            'total_eventos' => count($eventos),
+            'ultimo_evento' => !empty($eventos) ? $eventos[0] : null
+        ];
+    }
+
+    /**
+     * Determina o status atual baseado nos eventos
+     * 
+     * @param array $eventos
+     * @return string
+     */
+    private function determinarStatusAtual($eventos)
+    {
+        if (empty($eventos)) {
+            return self::STATUS_PENDENTE;
+        }
+
+        $ultimoEvento = $eventos[0];
+        $status = strtoupper($ultimoEvento['status'] ?? '');
+
+        // Mapeia os status da Total Express para os nossos
+        if (strpos($status, 'ENTREGUE') !== false) {
+            return self::STATUS_ENTREGUE;
+        } elseif (strpos($status, 'DEVOLVIDO') !== false) {
+            return self::STATUS_DEVOLVIDO;
+        } elseif (strpos($status, 'EXTRAVIADO') !== false) {
+            return self::STATUS_EXTRAVIADO;
+        } elseif (strpos($status, 'EM_TRANSITO') !== false || strpos($status, 'EM ROTA') !== false) {
+            return self::STATUS_EM_TRANSITO;
+        } else {
+            return self::STATUS_PENDENTE;
+        }
+    }
+
+    /**
+     * Retorna o texto do status
+     * 
+     * @param string $status
+     * @return string
+     */
+    private function getStatusTexto($status)
+    {
+        $statusMap = [
+            self::STATUS_PENDENTE => 'Pendente',
+            self::STATUS_EM_TRANSITO => 'Em Trânsito',
+            self::STATUS_ENTREGUE => 'Entregue',
+            self::STATUS_DEVOLVIDO => 'Devolvido',
+            self::STATUS_EXTRAVIADO => 'Extraviado'
+        ];
+
+        return $statusMap[$status] ?? 'Status Desconhecido';
     }
 
     /**

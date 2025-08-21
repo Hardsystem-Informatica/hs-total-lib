@@ -5,12 +5,14 @@ Uma biblioteca PHP para integração com a API SOAP da Total Express, permitindo
 ## 📋 Características
 
 - ✅ Cálculo de frete via API SOAP da Total Express
+- ✅ Rastreamento de encomendas em tempo real
 - ✅ Suporte a diferentes tipos de serviço (EXP, ESP, PRM, STD)
 - ✅ Validação automática de parâmetros
 - ✅ Formatação automática de valores monetários
 - ✅ Sistema de logs para debug
 - ✅ Tratamento de erros robusto
 - ✅ Suporte a parâmetros opcionais (dimensões, COD, etc.)
+- ✅ Rastreamento de múltiplas encomendas simultaneamente
 
 ## 🚀 Instalação
 
@@ -50,6 +52,10 @@ $resultado = $totalAPI->calcularFrete($params);
 
 echo "Prazo: " . $resultado['prazo_texto'] . "\n";
 echo "Valor: " . $resultado['valor_formatado'] . "\n";
+
+// Rastreamento de encomenda
+$rastreamento = $totalAPI->rastrearEncomenda('1234567890');
+echo "Status: " . $rastreamento['status_texto'] . "\n";
 ```
 
 ## 🔧 Configuração
@@ -100,6 +106,16 @@ $totalAPI = new TotalExpressAPI(
 | `TIPO_ENTREGA_NORMAL` | 0 | Entrega normal |
 | `TIPO_ENTREGA_GOBACK` | 1 | GoBack |
 | `TIPO_ENTREGA_RMA` | 2 | RMA |
+
+## 📦 Status de Rastreamento
+
+| Constante | Descrição |
+|-----------|-----------|
+| `STATUS_PENDENTE` | Pendente |
+| `STATUS_EM_TRANSITO` | Em Trânsito |
+| `STATUS_ENTREGUE` | Entregue |
+| `STATUS_DEVOLVIDO` | Devolvido |
+| `STATUS_EXTRAVIADO` | Extraviado |
 
 ## 📤 Resposta da API
 
@@ -158,6 +174,37 @@ $params = [
 ];
 
 $resultado = $totalAPI->calcularFrete($params);
+```
+
+### Exemplo 4: Rastreamento de Encomenda
+
+```php
+// Rastrear uma encomenda
+$rastreamento = $totalAPI->rastrearEncomenda('1234567890');
+
+echo "Status: " . $rastreamento['status_texto'] . "\n";
+echo "Destinatário: " . $rastreamento['destinatario'] . "\n";
+echo "Total de eventos: " . $rastreamento['total_eventos'] . "\n";
+
+// Ver eventos de rastreamento
+foreach ($rastreamento['eventos'] as $evento) {
+    echo "{$evento['data']} {$evento['hora']} - {$evento['local']}: {$evento['status']}\n";
+}
+```
+
+### Exemplo 5: Rastreamento de Múltiplas Encomendas
+
+```php
+$codigos = ['1234567890', '0987654321', '1122334455'];
+$resultados = $totalAPI->rastrearMultiplasEncomendas($codigos);
+
+foreach ($resultados as $resultado) {
+    if ($resultado['sucesso']) {
+        echo "Código {$resultado['codigo']}: {$resultado['dados']['status_texto']}\n";
+    } else {
+        echo "Código {$resultado['codigo']}: Erro - {$resultado['erro']}\n";
+    }
+}
 ```
 
 ## 🐛 Debug e Logs
